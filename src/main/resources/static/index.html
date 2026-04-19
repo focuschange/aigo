@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 바둑 - KataGo</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="logo">
+      <span class="logo-stone black-stone"></span>
+      <h1>AI 바둑</h1>
+      <span class="logo-stone white-stone"></span>
+    </div>
+    <span class="powered">Powered by KataGo</span>
+  </header>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+
+    <!-- Board area -->
+    <div class="board-wrapper">
+      <canvas id="boardCanvas"></canvas>
+      <div class="thinking-overlay hidden" id="thinkingOverlay">
+        <div class="thinking-box">
+          <div class="spinner"></div>
+          <span>KataGo 생각 중…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Setup panel -->
+      <section class="panel" id="setupPanel">
+        <h2>새 게임</h2>
+
+        <div class="field">
+          <label>바둑판 크기</label>
+          <div class="btn-group" id="sizeGroup">
+            <button class="opt-btn" data-val="9">9×9</button>
+            <button class="opt-btn active" data-val="19">19×19</button>
+            <button class="opt-btn" data-val="13">13×13</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>돌 색깔</label>
+          <div class="btn-group" id="colorGroup">
+            <button class="opt-btn active" data-val="BLACK">
+              <span class="btn-stone black-stone"></span>흑
+            </button>
+            <button class="opt-btn" data-val="WHITE">
+              <span class="btn-stone white-stone"></span>백
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>AI 난이도</label>
+          <div class="btn-group" id="diffGroup">
+            <button class="opt-btn" data-val="EASY">입문</button>
+            <button class="opt-btn" data-val="MEDIUM">중급</button>
+            <button class="opt-btn active" data-val="HARD">고급</button>
+          </div>
+        </div>
+
+        <button class="start-btn" id="startBtn">게임 시작</button>
+      </section>
+
+      <!-- In-game panel -->
+      <section class="panel hidden" id="gamePanel">
+
+        <!-- Scoreboard -->
+        <div class="scoreboard">
+          <div class="player-card" id="blackCard">
+            <div class="stone-display black-stone"></div>
+            <div class="player-info">
+              <span class="player-label">흑</span>
+              <span class="capture-count" id="blackCaptures">포획: 0</span>
+            </div>
+            <div class="turn-dot" id="blackDot"></div>
+          </div>
+          <div class="vs-divider">VS</div>
+          <div class="player-card" id="whiteCard">
+            <div class="stone-display white-stone"></div>
+            <div class="player-info">
+              <span class="player-label">백</span>
+              <span class="capture-count" id="whiteCaptures">포획: 0</span>
+            </div>
+            <div class="turn-dot" id="whiteDot"></div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="status-bar" id="statusBar">흑의 차례</div>
+
+        <!-- Win rate bar -->
+        <div class="winrate-section hidden" id="winrateSection">
+          <label class="winrate-label">승률</label>
+          <div class="winrate-bar">
+            <div class="winrate-black" id="winrateBlack" style="width:50%">
+              <span class="winrate-text" id="winrateBlackText">50%</span>
+            </div>
+            <div class="winrate-white" id="winrateWhite" style="width:50%">
+              <span class="winrate-text" id="winrateWhiteText">50%</span>
+            </div>
+          </div>
+          <div class="winrate-labels">
+            <span>흑</span>
+            <span>백</span>
+          </div>
+        </div>
+
+        <!-- Move number -->
+        <div class="move-counter">
+          수: <span id="moveCount">0</span>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+          <button class="ctrl-btn hint" id="hintBtn">힌트</button>
+          <button class="ctrl-btn" id="passBtn">패스</button>
+          <button class="ctrl-btn danger" id="resignBtn">기권</button>
+        </div>
+
+        <!-- Score (shown after game ends) -->
+        <div class="score-result hidden" id="scoreResult">
+          <h3>최종 점수 <small>(한국식 계가)</small></h3>
+          <div class="score-breakdown">
+            <div class="score-row header-row">
+              <span></span><span>흑</span><span>백</span>
+            </div>
+            <div class="score-row">
+              <span>빈집(영역)</span>
+              <span id="blackTerritory">—</span>
+              <span id="whiteTerritory">—</span>
+            </div>
+            <div class="score-row">
+              <span>잡은 돌</span>
+              <span id="blackPrisoners">—</span>
+              <span id="whitePrisoners">—</span>
+            </div>
+            <div class="score-row">
+              <span>코미</span>
+              <span>—</span>
+              <span>6.5</span>
+            </div>
+            <div class="score-row total-row">
+              <span>합계</span>
+              <span id="finalBlack">—</span>
+              <span id="finalWhite">—</span>
+            </div>
+          </div>
+          <div class="winner-label" id="winnerLabel"></div>
+        </div>
+
+        <button class="start-btn" id="newGameBtn">새 게임</button>
+      </section>
+
+    </aside>
+  </main>
+</div>
+
+<script src="/js/game.js"></script>
+</body>
+</html>
