@@ -12,9 +12,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 프론트엔드는 동일 오리진(Spring Boot + Vite 빌드 산출물)에서 서빙되므로
+ * CORS 허용을 두지 않는다. 개발 환경은 Vite dev server 의 /api 프록시로 처리.
+ */
 @RestController
 @RequestMapping("/api/game")
-@CrossOrigin(origins = "*")
 public class GameController {
 
     private final GameService gameService;
