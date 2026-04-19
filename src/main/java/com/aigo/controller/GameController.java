@@ -8,6 +8,7 @@ import com.aigo.service.GameService;
 
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -63,6 +64,13 @@ public class GameController {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> handleError(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(e.getMessage());
+        // 세션 만료/미존재를 410 Gone 으로 구분
+        String msg = e.getMessage() == null ? "" : e.getMessage();
+        if (msg.startsWith("Game not found")) {
+            return ResponseEntity.status(HttpStatus.GONE)
+                    .body("게임 세션이 만료되었거나 존재하지 않습니다. 새 게임을 시작해 주세요.");
+        }
+        // 그 외 잘못된 요청: 고정 문구로 응답하여 내부 정보 노출 방지
+        return ResponseEntity.badRequest().body("잘못된 요청입니다.");
     }
 }
