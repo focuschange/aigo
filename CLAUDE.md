@@ -5,9 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-./gradlew build -x test   # 빌드 (테스트 제외)
-./gradlew bootRun          # 서버 실행 (http://localhost:8080)
-./gradlew test             # 테스트 (현재 테스트 없음)
+./gradlew build -x test   # 빌드 (프론트엔드 npm build 포함, 테스트 제외)
+./gradlew bootRun          # 서버 실행 (http://localhost:22001)
+./gradlew test             # 보안 테스트 (Caffeine 세션 evict, 레이트 리밋 필터)
+```
+
+### 프론트엔드 개발 모드
+```bash
+cd frontend && npm run dev   # Vite dev server: http://localhost:5173
+# /api 요청은 자동으로 localhost:22001 (Spring Boot) 로 프록시
 ```
 
 **사전 요구사항:** KataGo가 설치되어 있어야 AI가 동작함. 없으면 AI가 자동 패스(그레이스풀 폴백).
@@ -28,9 +34,9 @@ Browser (Canvas + JS) → GameController (REST) → GameService → Game/Board (
 - **`model/Game`** — 게임 상태 머신. 착수, 패스, 기권, 슈퍼코 감지, 한국식 계가
 - **`model/Board`** — 바둑 규칙 엔진. 착수 유효성, 포획, 사활, 영역 계산
 - **`ai/KataGoEngine`** — KataGo 서브프로세스 관리. `ReentrantLock`으로 GTP 명령 직렬화
-- **`static/js/game.js`** — 프론트엔드 전체. Canvas 렌더링 + REST 통신 (프레임워크 없음)
+- **`frontend/src`** — React 19 + TS + Tailwind. Canvas 렌더링은 `canvas/boardRenderer.ts` 순수 함수로 분리, `GoBoard` 컴포넌트가 useRef+useEffect 로 호출. 서버 상태는 TanStack Query 훅(`api/hooks.ts`)으로 관리
 
-**스레드 안전:** KataGoEngine은 단일 프로세스를 `ReentrantLock`으로 보호. GameService는 `ConcurrentHashMap`으로 게임 세션 관리.
+**스레드 안전:** KataGoEngine은 단일 프로세스를 `ReentrantLock`으로 보호. GameService는 Caffeine 캐시(LRU + 활성/종료 2단계 TTL)로 게임 세션 관리.
 
 ## KataGo GTP 통신 주의사항
 
@@ -58,5 +64,17 @@ Browser (Canvas + JS) → GameController (REST) → GameService → Game/Board (
 
 ## 프론트엔드
 
-순수 HTML5 Canvas + JS (프레임워크 없음). `state` 객체로 모든 UI 상태 관리.
-`applyState(data)` → `render()` 패턴으로 서버 응답을 Canvas에 반영.
+**스택:** Vite + React 19 + TypeScript + Tailwind CSS v3 + TanStack Query + Lucide React.
+
+**Canvas 격리 원칙:**
+- `canvas/boardRenderer.ts` 는 React 비의존 순수 함수. 바둑판의 모든 그리기 로직이 여기 모여 있음.
+- `components/GoBoard.tsx` 가 `useRef<HTMLCanvasElement>` + `useEffect` 로 렌더러를 호출. VDOM 다이프 밖에서 그리므로 `react-konva` 같은 래퍼가 불필요.
+
+**상태 관리:**
+- **UI 상태** (선택된 보드 크기·색·난이도, 힌트 표시 여부): `useState` / `useReducer`
+- **서버 상태** (게임 상태, 힌트 결과): `@tanstack/react-query` 훅 (`api/hooks.ts`)
+- **착수 최적화**: `usePlayerMove` 의 `onMutate` 에서 돌을 즉시 그리고(optimistic update), 실패 시 자동 롤백
+
+**빌드 파이프라인:**
+- `./gradlew build` → `buildFrontend` (npm run build) → `src/main/resources/static/` 산출 → `bootJar` 포함
+- `src/main/resources/static/` 은 빌드 산출물이므로 `.gitignore` 처리됨 (git으로 추적하지 않음)
