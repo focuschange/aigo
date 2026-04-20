@@ -116,95 +116,115 @@ public class GameService {
     /** Human makes a move, then AI responds. */
     public GameState playerMove(String gameId, int row, int col) {
         GameSession session = getSession(gameId);
-        Game game = session.game();
-        String playerColor = session.playerColor();
-        String difficulty  = session.difficulty();
+        session.lock().lock();
+        try {
+            Game game = session.game();
+            String playerColor = session.playerColor();
+            String difficulty  = session.difficulty();
 
-        if (game.isGameOver())
-            return error(game, playerColor, difficulty, "게임이 이미 종료되었습니다.");
+            if (game.isGameOver())
+                return error(game, playerColor, difficulty, "게임이 이미 종료되었습니다.");
 
-        if (!game.getCurrentPlayer().name().equals(playerColor))
-            return error(game, playerColor, difficulty, "당신의 차례가 아닙니다.");
+            if (!game.getCurrentPlayer().name().equals(playerColor))
+                return error(game, playerColor, difficulty, "당신의 차례가 아닙니다.");
 
-        if (!game.makeMove(row, col))
-            return error(game, playerColor, difficulty, "유효하지 않은 수입니다.");
+            if (!game.makeMove(row, col))
+                return error(game, playerColor, difficulty, "유효하지 않은 수입니다.");
 
-        int[] playerMove = new int[]{row, col};
+            int[] playerMove = new int[]{row, col};
 
-        // AI responds
-        int[] aiMove = null;
-        double blackWinRate = -1;
-        if (!game.isGameOver()) {
-            var result = applyAiMove(game, difficulty);
-            aiMove = result.move();
-            blackWinRate = result.blackWinRate();
-        } else {
-            // 게임 종료 시에도 승률 조회
-            blackWinRate = kataGo.queryBlackWinRate(game.getMoveHistory(), game.getBoardSize());
+            // AI responds
+            int[] aiMove = null;
+            double blackWinRate = -1;
+            if (!game.isGameOver()) {
+                var result = applyAiMove(game, difficulty);
+                aiMove = result.move();
+                blackWinRate = result.blackWinRate();
+            } else {
+                // 게임 종료 시에도 승률 조회
+                blackWinRate = kataGo.queryBlackWinRate(game.getMoveHistory(), game.getBoardSize());
+            }
+
+            refreshSession(gameId);
+
+            GameState state = GameState.from(game, playerColor, difficulty);
+            state.gameId      = gameId;
+            state.lastMove    = playerMove;   // 플레이어 착점
+            state.aiLastMove  = aiMove;       // AI 착점
+            state.blackWinRate = blackWinRate;
+            return state;
+        } finally {
+            session.lock().unlock();
         }
-
-        refreshSession(gameId);
-
-        GameState state = GameState.from(game, playerColor, difficulty);
-        state.gameId      = gameId;
-        state.lastMove    = playerMove;   // 플레이어 착점
-        state.aiLastMove  = aiMove;       // AI 착점
-        state.blackWinRate = blackWinRate;
-        return state;
     }
 
     /** Human passes, then AI responds. */
     public GameState playerPass(String gameId) {
         GameSession session = getSession(gameId);
-        Game game = session.game();
-        String playerColor = session.playerColor();
-        String difficulty  = session.difficulty();
+        session.lock().lock();
+        try {
+            Game game = session.game();
+            String playerColor = session.playerColor();
+            String difficulty  = session.difficulty();
 
-        if (game.isGameOver())
-            return error(game, playerColor, difficulty, "게임이 이미 종료되었습니다.");
+            if (game.isGameOver())
+                return error(game, playerColor, difficulty, "게임이 이미 종료되었습니다.");
 
-        game.pass();
+            game.pass();
 
-        int[] aiMove = null;
-        double blackWinRate = -1;
-        if (!game.isGameOver()) {
-            var result = applyAiMove(game, difficulty);
-            aiMove = result.move();
-            blackWinRate = result.blackWinRate();
-        } else {
-            blackWinRate = kataGo.queryBlackWinRate(game.getMoveHistory(), game.getBoardSize());
+            int[] aiMove = null;
+            double blackWinRate = -1;
+            if (!game.isGameOver()) {
+                var result = applyAiMove(game, difficulty);
+                aiMove = result.move();
+                blackWinRate = result.blackWinRate();
+            } else {
+                blackWinRate = kataGo.queryBlackWinRate(game.getMoveHistory(), game.getBoardSize());
+            }
+
+            refreshSession(gameId);
+
+            GameState state = GameState.from(game, playerColor, difficulty);
+            state.gameId     = gameId;
+            state.aiLastMove = aiMove;  // AI 착점 (플레이어는 패스)
+            state.blackWinRate = blackWinRate;
+            return state;
+        } finally {
+            session.lock().unlock();
         }
-
-        refreshSession(gameId);
-
-        GameState state = GameState.from(game, playerColor, difficulty);
-        state.gameId     = gameId;
-        state.aiLastMove = aiMove;  // AI 착점 (플레이어는 패스)
-        state.blackWinRate = blackWinRate;
-        return state;
     }
 
     /** Human resigns. */
     public GameState playerResign(String gameId) {
         GameSession session = getSession(gameId);
-        Game game = session.game();
-        String playerColor = session.playerColor();
-        String difficulty  = session.difficulty();
+        session.lock().lock();
+        try {
+            Game game = session.game();
+            String playerColor = session.playerColor();
+            String difficulty  = session.difficulty();
 
-        game.resign();
-        refreshSession(gameId);
+            game.resign();
+            refreshSession(gameId);
 
-        GameState state = GameState.from(game, playerColor, difficulty);
-        state.gameId = gameId;
-        state.message = "기권했습니다.";
-        return state;
+            GameState state = GameState.from(game, playerColor, difficulty);
+            state.gameId = gameId;
+            state.message = "기권했습니다.";
+            return state;
+        } finally {
+            session.lock().unlock();
+        }
     }
 
     public GameState getState(String gameId) {
         GameSession session = getSession(gameId);
-        GameState state = GameState.from(session.game(), session.playerColor(), session.difficulty());
-        state.gameId = gameId;
-        return state;
+        session.lock().lock();
+        try {
+            GameState state = GameState.from(session.game(), session.playerColor(), session.difficulty());
+            state.gameId = gameId;
+            return state;
+        } finally {
+            session.lock().unlock();
+        }
     }
 
     /**
@@ -248,29 +268,34 @@ public class GameService {
      */
     public List<HintMove> getHints(String gameId, int maxMoves) {
         GameSession session = getSession(gameId);
-        Game game = session.game();
-        if (game.isGameOver()) return List.of();
+        session.lock().lock();
+        try {
+            Game game = session.game();
+            if (game.isGameOver()) return List.of();
 
-        // ── 게임 단위 쿨다운 체크 ────────────────────────────────────────
-        long cooldownNs = engineProps.getHintCooldownMs() * 1_000_000L;
-        long now = System.nanoTime();
-        long last = session.lastHintAtNanos().get();
-        if (last != 0 && now - last < cooldownNs) {
-            long remainMs = (cooldownNs - (now - last)) / 1_000_000L;
-            long retrySec = Math.max(1, (remainMs + 999) / 1000); // ceil
-            throw new HintCooldownException(retrySec);
+            // ── 게임 단위 쿨다운 체크 ────────────────────────────────────
+            long cooldownNs = engineProps.getHintCooldownMs() * 1_000_000L;
+            long now = System.nanoTime();
+            long last = session.lastHintAtNanos().get();
+            if (last != 0 && now - last < cooldownNs) {
+                long remainMs = (cooldownNs - (now - last)) / 1_000_000L;
+                long retrySec = Math.max(1, (remainMs + 999) / 1000); // ceil
+                throw new HintCooldownException(retrySec);
+            }
+            // ───────────────────────────────────────────────────────────
+
+            List<HintMove> result = kataGo.getHints(
+                    game.getMoveHistory(),
+                    game.getBoardSize(),
+                    game.getCurrentPlayer(),
+                    maxMoves);
+
+            // 정상 응답 완료 시점으로 쿨다운 기산 (엔진 블로킹 시간 제외)
+            session.lastHintAtNanos().set(System.nanoTime());
+            return result;
+        } finally {
+            session.lock().unlock();
         }
-        // ───────────────────────────────────────────────────────────────
-
-        List<HintMove> result = kataGo.getHints(
-                game.getMoveHistory(),
-                game.getBoardSize(),
-                game.getCurrentPlayer(),
-                maxMoves);
-
-        // 정상 응답 완료 시점으로 쿨다운 기산 (엔진 블로킹 시간 제외)
-        session.lastHintAtNanos().set(System.nanoTime());
-        return result;
     }
 
     /**
