@@ -2,6 +2,7 @@ package com.aigo.controller;
 
 import com.aigo.ai.EngineBusyException;
 import com.aigo.ai.HintCooldownException;
+import com.aigo.config.SecurityConfig;
 import com.aigo.service.GameService;
 import com.aigo.ratelimit.NewGameRateLimitFilter;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -29,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = GameController.class,
         excludeFilters = @org.springframework.context.annotation.ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE, classes = NewGameRateLimitFilter.class))
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
 class GameControllerExceptionMappingTest {
 
     @Autowired MockMvc mvc;
@@ -69,7 +71,7 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void newGame_withInvalidPlayerColor_returns400() throws Exception {
-        mvc.perform(post("/api/game/new")
+        mvc.perform(post("/api/game/new").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"boardSize\":9,\"playerColor\":\"PURPLE\",\"difficulty\":\"EASY\"}"))
                 .andExpect(status().isBadRequest());
@@ -77,7 +79,7 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void newGame_withInvalidDifficulty_returns400() throws Exception {
-        mvc.perform(post("/api/game/new")
+        mvc.perform(post("/api/game/new").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"boardSize\":9,\"playerColor\":\"BLACK\",\"difficulty\":\"IMPOSSIBLE\"}"))
                 .andExpect(status().isBadRequest());
@@ -85,7 +87,7 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void newGame_withOutOfRangeBoardSize_returns400() throws Exception {
-        mvc.perform(post("/api/game/new")
+        mvc.perform(post("/api/game/new").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"boardSize\":25,\"playerColor\":\"BLACK\",\"difficulty\":\"EASY\"}"))
                 .andExpect(status().isBadRequest());
@@ -93,7 +95,7 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void move_withNegativeCoord_returns400() throws Exception {
-        mvc.perform(post("/api/game/g1/move")
+        mvc.perform(post("/api/game/g1/move").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"row\":-1,\"col\":3}"))
                 .andExpect(status().isBadRequest());
@@ -101,7 +103,7 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void malformedJson_returns400() throws Exception {
-        mvc.perform(post("/api/game/new")
+        mvc.perform(post("/api/game/new").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{not-json"))
                 .andExpect(status().isBadRequest());
@@ -109,9 +111,18 @@ class GameControllerExceptionMappingTest {
 
     @Test
     void emptyBody_returns400() throws Exception {
-        mvc.perform(post("/api/game/new")
+        mvc.perform(post("/api/game/new").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(""))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void postWithoutCsrfToken_isForbidden() throws Exception {
+        // SecurityConfig 가 적용된 상태에서 POST 는 CSRF 토큰이 없으면 403
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardSize\":9,\"playerColor\":\"BLACK\",\"difficulty\":\"EASY\"}"))
+                .andExpect(status().isForbidden());
     }
 }

@@ -21,6 +21,8 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // CSRF 보호 (인증 없음, CSRF + 보안 헤더만 활성)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
 
     // 세션 캐시 (LRU + TTL evict)
     implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
@@ -29,6 +31,7 @@ dependencies {
     implementation 'com.bucket4j:bucket4j-core:8.10.1'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 tasks.named('test') {
