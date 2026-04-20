@@ -1,5 +1,7 @@
 package com.aigo.controller;
 
+import com.aigo.ai.EngineBusyException;
+import com.aigo.ai.HintCooldownException;
 import com.aigo.ai.KataGoEngine.HintMove;
 import com.aigo.model.GameState;
 import com.aigo.model.MoveRequest;
@@ -75,5 +77,27 @@ public class GameController {
         }
         // 그 외 잘못된 요청: 고정 문구로 응답하여 내부 정보 노출 방지
         return ResponseEntity.badRequest().body("잘못된 요청입니다.");
+    }
+
+    /**
+     * 게임 단위 힌트 쿨다운 초과 → 429 + Retry-After.
+     * 악성 사용자의 연속 힌트 호출로 KataGo 가 점유되는 것을 방지한다.
+     */
+    @ExceptionHandler(HintCooldownException.class)
+    public ResponseEntity<String> handleHintCooldown(HintCooldownException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(e.getRetryAfterSec()))
+                .body("힌트는 " + e.getRetryAfterSec() + "초 후 다시 사용할 수 있습니다.");
+    }
+
+    /**
+     * KataGo 엔진 락 획득 타임아웃 → 503 + Retry-After.
+     * Tomcat 요청 스레드가 무한 블로킹되는 것을 방지하기 위한 안전장치.
+     */
+    @ExceptionHandler(EngineBusyException.class)
+    public ResponseEntity<String> handleEngineBusy(EngineBusyException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header("Retry-After", String.valueOf(e.getRetryAfterSec()))
+                .body("AI 엔진이 혼잡합니다. 잠시 후 다시 시도해 주세요.");
     }
 }

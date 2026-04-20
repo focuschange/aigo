@@ -1,8 +1,10 @@
 package com.aigo.service;
 
+import com.aigo.ai.HintCooldownException;
 import com.aigo.ai.KataGoEngine;
 import com.aigo.ai.KataGoEngine.HintMove;
 import com.aigo.ai.KataGoEngine.MoveResult;
+import com.aigo.config.EngineProperties;
 import com.aigo.config.SessionProperties;
 import com.aigo.model.*;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -24,6 +26,7 @@ public class GameService {
 
     private final KataGoEngine kataGo;
     private final SessionProperties sessionProps;
+    private final EngineProperties engineProps;
 
     /**
      * 게임 세션 캐시.
@@ -36,14 +39,18 @@ public class GameService {
     private final Cache<String, GameSession> sessions;
 
     @Autowired
-    public GameService(KataGoEngine kataGo, SessionProperties sessionProps) {
-        this(kataGo, sessionProps, Ticker.systemTicker());
+    public GameService(KataGoEngine kataGo, SessionProperties sessionProps, EngineProperties engineProps) {
+        this(kataGo, sessionProps, engineProps, Ticker.systemTicker());
     }
 
     /** 테스트 훅: 가짜 Ticker 주입용. */
-    GameService(KataGoEngine kataGo, SessionProperties sessionProps, Ticker ticker) {
+    GameService(KataGoEngine kataGo,
+                SessionProperties sessionProps,
+                EngineProperties engineProps,
+                Ticker ticker) {
         this.kataGo = kataGo;
         this.sessionProps = sessionProps;
+        this.engineProps = engineProps;
 
         Duration activeTtl = Duration.ofMinutes(sessionProps.getTtlActiveMinutes());
         Duration endedTtl  = Duration.ofMinutes(sessionProps.getTtlEndedMinutes());
@@ -89,7 +96,7 @@ public class GameService {
         String playerColor = req.playerColor == null ? "BLACK" : req.playerColor.toUpperCase();
         String difficulty  = req.difficulty  == null ? "HARD"  : req.difficulty.toUpperCase();
 
-        sessions.put(gameId, new GameSession(game, playerColor, difficulty));
+        sessions.put(gameId, GameSession.create(game, playerColor, difficulty));
 
         // If human plays white, AI (black) moves first
         double blackWinRate = -1;
@@ -231,16 +238,39 @@ public class GameService {
         }
     }
 
-    /** 힌트: 현재 포지션에서 최대 maxMoves개의 추천수를 반환한다. */
+    /**
+     * 힌트: 현재 포지션에서 최대 maxMoves개의 추천수를 반환한다.
+     *
+     * <p>게임 단위 쿨다운({@link EngineProperties#getHintCooldownMs()}) 내에 재호출하면
+     * {@link HintCooldownException} 이 발생하여 컨트롤러에서 429 응답으로 매핑된다.
+     * KataGo 엔진이 혼잡할 때는 {@code KataGoEngine} 내부에서 {@code EngineBusyException} 이
+     * 던져져 503 으로 매핑된다.
+     */
     public List<HintMove> getHints(String gameId, int maxMoves) {
         GameSession session = getSession(gameId);
         Game game = session.game();
         if (game.isGameOver()) return List.of();
-        return kataGo.getHints(
+
+        // ── 게임 단위 쿨다운 체크 ────────────────────────────────────────
+        long cooldownNs = engineProps.getHintCooldownMs() * 1_000_000L;
+        long now = System.nanoTime();
+        long last = session.lastHintAtNanos().get();
+        if (last != 0 && now - last < cooldownNs) {
+            long remainMs = (cooldownNs - (now - last)) / 1_000_000L;
+            long retrySec = Math.max(1, (remainMs + 999) / 1000); // ceil
+            throw new HintCooldownException(retrySec);
+        }
+        // ───────────────────────────────────────────────────────────────
+
+        List<HintMove> result = kataGo.getHints(
                 game.getMoveHistory(),
                 game.getBoardSize(),
                 game.getCurrentPlayer(),
                 maxMoves);
+
+        // 정상 응답 완료 시점으로 쿨다운 기산 (엔진 블로킹 시간 제외)
+        session.lastHintAtNanos().set(System.nanoTime());
+        return result;
     }
 
     /**

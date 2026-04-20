@@ -1,6 +1,7 @@
 package com.aigo.service;
 
 import com.aigo.ai.KataGoEngine;
+import com.aigo.config.EngineProperties;
 import com.aigo.config.SessionProperties;
 import com.aigo.model.NewGameRequest;
 import com.github.benmanes.caffeine.cache.Ticker;
@@ -38,7 +39,8 @@ class GameSessionEvictionTest {
         props.setMaxActive(maxActive);
         props.setTtlActiveMinutes(ttlActiveMin);
         props.setTtlEndedMinutes(ttlEndedMin);
-        return new GameService(kataGo, props, ticker);
+        EngineProperties engineProps = new EngineProperties(); // 기본값 (3s/5s)
+        return new GameService(kataGo, props, engineProps, ticker);
     }
 
     private NewGameRequest blackRequest() {
