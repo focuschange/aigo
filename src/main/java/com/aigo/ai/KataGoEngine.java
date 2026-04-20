@@ -1,5 +1,6 @@
 package com.aigo.ai;
 
+import com.aigo.config.EngineProperties;
 import com.aigo.model.MoveRecord;
 import com.aigo.model.Stone;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,8 +42,17 @@ public class KataGoEngine {
     private BufferedWriter writer;
     private BufferedReader reader;
     private BufferedReader errReader;
-    private final ReentrantLock lock = new ReentrantLock();
+    /**
+     * KataGo 프로세스 접근 직렬화용 fair 락.
+     * fair=true 로 설정하여 힌트 스팸 상황에서도 다른 요청이 FIFO 로 순서를 얻도록 한다.
+     */
+    private final ReentrantLock lock = new ReentrantLock(true);
+    private final EngineProperties engineProps;
     private boolean available = false;
+
+    public KataGoEngine(EngineProperties engineProps) {
+        this.engineProps = engineProps;
+    }
 
     @PostConstruct
     public void start() {
@@ -105,7 +116,7 @@ public class KataGoEngine {
             log.error("KataGo is not available");
             return new MoveResult(null, -1);
         }
-        lock.lock();
+        acquireLockOrThrow("generateMove");
         try {
             // Set difficulty via visit limit
             int visits = switch (difficulty.toUpperCase()) {
@@ -159,7 +170,7 @@ public class KataGoEngine {
      */
     public double queryBlackWinRate(List<MoveRecord> moveHistory, int boardSize) {
         if (!available) return -1;
-        lock.lock();
+        acquireLockOrThrow("queryBlackWinRate");
         try {
             sendRawCommand("clear_board");
             sendRawCommand("boardsize " + boardSize);
@@ -231,7 +242,7 @@ public class KataGoEngine {
      */
     public List<HintMove> getHints(List<MoveRecord> moveHistory, int boardSize, Stone colorToPlay, int maxMoves) {
         if (!available) return List.of();
-        lock.lock();
+        acquireLockOrThrow("getHints");
         try {
             // 보드 셋업
             sendRawCommand("clear_board");
@@ -395,6 +406,29 @@ public class KataGoEngine {
         hints.sort((a, b) -> Integer.compare(a.order(), b.order()));
         log.info("Parsed {} hint moves", hints.size());
         return hints;
+    }
+
+    /**
+     * KataGo 락 획득을 시도하되 {@link EngineProperties#getLockTimeoutMs()} 초과 시
+     * {@link EngineBusyException} 을 던진다.
+     *
+     * Tomcat 요청 스레드가 무한정 블로킹되어 스레드 풀이 고갈되는 것을 막기 위한 방어선이다.
+     */
+    private void acquireLockOrThrow(String opName) {
+        long timeoutMs = engineProps.getLockTimeoutMs();
+        boolean acquired;
+        try {
+            acquired = lock.tryLock(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Interrupted while waiting for KataGo lock ({})", opName);
+            throw new EngineBusyException(Math.max(1, timeoutMs / 1000));
+        }
+        if (!acquired) {
+            long retrySec = Math.max(1, timeoutMs / 1000);
+            log.warn("KataGo busy: {} 락 획득 타임아웃 ({}ms). retry-after={}s", opName, timeoutMs, retrySec);
+            throw new EngineBusyException(retrySec);
+        }
     }
 
     /** Send a raw GTP command and return the response (without leading "= " or "? "). */

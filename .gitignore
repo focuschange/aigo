@@ -46,3 +46,11 @@ logs/
 # Env
 .env
 .env.local
+
+# Frontend (Vite + npm)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Frontend build artifacts (Gradle buildFrontend 이 생성)
+src/main/resources/static/

@@ -2,6 +2,8 @@ plugins {
     id 'org.springframework.boot' version '3.3.4'
     id 'io.spring.dependency-management' version '1.1.6'
     id 'java'
+    // npm build 를 Gradle 라이프사이클에 연동 (시스템 Node 사용)
+    id 'com.github.node-gradle.node' version '7.1.0'
 }
 
 group = 'com.aigo'
@@ -18,9 +20,59 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // CSRF 보호 (인증 없음, CSRF + 보안 헤더만 활성)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // 세션 캐시 (LRU + TTL evict)
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+
+    // 레이트 리밋 (IP 단위 토큰 버킷)
+    implementation 'com.bucket4j:bucket4j-core:8.10.1'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// ─────────────────────────────────────────────
+//  Frontend (Vite + React + TS) 빌드 통합
+// ─────────────────────────────────────────────
+node {
+    download = false              // 시스템 node 사용 (.nvmrc/Homebrew 등)
+    nodeProjectDir = file("frontend")
+}
+
+tasks.register('buildFrontend', com.github.gradle.node.npm.task.NpmTask) {
+    group = 'frontend'
+    description = 'Vite 로 프론트엔드를 빌드하여 src/main/resources/static 에 출력'
+    dependsOn 'npmInstall'
+    args = ['run', 'build']
+    inputs.dir('frontend/src').withPropertyName('frontendSrc').withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file('frontend/index.html')
+    inputs.file('frontend/package.json')
+    inputs.file('frontend/package-lock.json').optional()
+    inputs.file('frontend/vite.config.ts')
+    inputs.file('frontend/tsconfig.json')
+    inputs.file('frontend/tsconfig.app.json')
+    inputs.file('frontend/tailwind.config.js')
+    inputs.file('frontend/postcss.config.js')
+    outputs.dir('src/main/resources/static').withPropertyName('frontendDist')
+}
+
+// Spring Boot 가 리소스를 처리하기 전에 프론트엔드를 먼저 빌드한다.
+tasks.named('processResources') {
+    dependsOn 'buildFrontend'
+}
+
+// 깨끗한 재빌드 시 산출물도 정리
+tasks.register('cleanFrontend', Delete) {
+    delete 'src/main/resources/static'
+    delete 'frontend/node_modules/.vite'
+}
+tasks.named('clean') {
+    dependsOn 'cleanFrontend'
 }
