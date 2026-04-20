@@ -9,28 +9,34 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@link GameController} 의 예외 → HTTP 응답 매핑 검증.
+ * {@link GameController} / {@link GlobalExceptionHandler} 의 예외 → HTTP 응답 매핑 검증.
  *
  * NewGameRateLimitFilter 는 WebMvcTest 가 자동 로드하지만 해당 테스트와 무관하므로 빈으로 제외한다.
  */
 @WebMvcTest(controllers = GameController.class,
         excludeFilters = @org.springframework.context.annotation.ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE, classes = NewGameRateLimitFilter.class))
+@Import(GlobalExceptionHandler.class)
 class GameControllerExceptionMappingTest {
 
     @Autowired MockMvc mvc;
 
     @MockBean GameService gameService;
+
+    // ── 엔진/세션 예외 매핑 ──
 
     @Test
     void hintCooldown_returns429WithRetryAfter() throws Exception {
@@ -57,5 +63,55 @@ class GameControllerExceptionMappingTest {
 
         mvc.perform(get("/api/game/g1/hints"))
                 .andExpect(status().isGone());
+    }
+
+    // ── 입력 검증 실패 (400) ──
+
+    @Test
+    void newGame_withInvalidPlayerColor_returns400() throws Exception {
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardSize\":9,\"playerColor\":\"PURPLE\",\"difficulty\":\"EASY\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void newGame_withInvalidDifficulty_returns400() throws Exception {
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardSize\":9,\"playerColor\":\"BLACK\",\"difficulty\":\"IMPOSSIBLE\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void newGame_withOutOfRangeBoardSize_returns400() throws Exception {
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"boardSize\":25,\"playerColor\":\"BLACK\",\"difficulty\":\"EASY\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void move_withNegativeCoord_returns400() throws Exception {
+        mvc.perform(post("/api/game/g1/move")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"row\":-1,\"col\":3}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void malformedJson_returns400() throws Exception {
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void emptyBody_returns400() throws Exception {
+        mvc.perform(post("/api/game/new")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(""))
+                .andExpect(status().isBadRequest());
     }
 }
